@@ -5,12 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#0d3a66" />
-<!--
-  Origin Trial token slot for canvas-draw-element (Chrome 148–150).
-  Register muthuishere.github.io at https://developer.chrome.com/origintrials
-  and paste the token below to enable the HTMLTexture path for all visitors.
-  <meta http-equiv="origin-trial" content="PASTE_TOKEN_HERE">
--->
+<!-- HTMLInCanvas Origin Trial token for muthuishere.github.io (incl. subdomains), expires 2026-10-23 -->
+<meta http-equiv="origin-trial" content="Ar4+rMiu322yC0BcH6lPi7fS6S8AqKmDAJMwRPsjKMEPBYOZs+ZwJNOCt7mkDeLBKt5dd8vpa13THSU2wxUcUQsAAABueyJvcmlnaW4iOiJodHRwczovL211dGh1aXNoZXJlLmdpdGh1Yi5pbzo0NDMiLCJmZWF0dXJlIjoiSFRNTEluQ2FudmFzIiwiZXhwaXJ5IjoxNzg3NjE2MDAwLCJpc1N1YmRvbWFpbiI6dHJ1ZX0=">
 <title>Snow Race — Sreejan, Sreevarshan & Magizhini</title>
 <style>
   :root {
@@ -241,6 +237,19 @@
   }
   #tiltBtn.active { background: var(--gold); color: var(--ink); border-color: var(--gold-dark); }
 
+  #muteBtn {
+    position: fixed; top: 64px; right: 10px;
+    z-index: 8;
+    padding: 6px 10px; border-radius: 18px;
+    background: var(--panel); color: #fff;
+    border: 2px solid rgba(255,255,255,0.3);
+    font-weight: bold; font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  body.racing #muteBtn { top: 10px; }
+  #muteBtn.muted { background: rgba(70,70,70,0.6); opacity: 0.75; }
+
   #respawnFlash {
     position: fixed; inset: 0;
     background: rgba(255,255,255,0.0);
@@ -331,6 +340,8 @@
 <div id="countdown" class="hidden">3</div>
 <div id="respawnFlash"></div>
 <div id="fallToast">Oops! Back to checkpoint 🐧</div>
+
+<button id="muteBtn" title="Music">🔊</button>
 
 <div id="touchUI">
   <div id="joystick"><div class="stick"></div></div>
@@ -977,6 +988,132 @@ function projectToTrack(pos) {
   return { t: s.t, sample: s, dist };
 }
 
+// ---------- Music (WebAudio synthesized chiptune loop) ----------
+const Music = (() => {
+  let audioCtx = null;
+  let masterGain = null;
+  let started = false;
+  let muted = false;
+  let nextNoteTime = 0;
+  let step = 0;
+  let timerId = null;
+
+  // C major bouncy loop. Notes as MIDI numbers, 0 = rest. 16 steps = 1 bar.
+  // Melody (two bars)
+  const melody = [
+    72, 0, 67, 0, 69, 0, 72, 0, 74, 0, 72, 0, 69, 0, 67, 0,
+    74, 0, 71, 0, 72, 0, 76, 0, 79, 0, 76, 0, 72, 0, 71, 0,
+  ];
+  // Simple alternating bass
+  const bass = [
+    48, 0, 0, 0, 48, 0, 0, 0, 55, 0, 0, 0, 55, 0, 0, 0,
+    53, 0, 0, 0, 53, 0, 0, 0, 50, 0, 0, 0, 50, 0, 0, 0,
+  ];
+  // Hi-hat / shaker every 8th
+  const hat = [
+    1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+    1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+  ];
+
+  const BPM = 116;
+  const stepSec = 60 / BPM / 4;       // 16th notes
+
+  function midiToFreq(n) { return 440 * Math.pow(2, (n - 69) / 12); }
+
+  function playMelody(time, note) {
+    if (!note) return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'triangle';
+    o.frequency.value = midiToFreq(note);
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(0.18, time + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+    o.connect(g).connect(masterGain);
+    o.start(time);
+    o.stop(time + 0.2);
+  }
+  function playBass(time, note) {
+    if (!note) return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = midiToFreq(note);
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(0.22, time + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.32);
+    o.connect(g).connect(masterGain);
+    o.start(time);
+    o.stop(time + 0.35);
+  }
+  function playHat(time) {
+    const bufSize = audioCtx.sampleRate * 0.04;
+    const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const hp = audioCtx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 5000;
+    const g = audioCtx.createGain();
+    g.gain.value = 0.05;
+    src.connect(hp).connect(g).connect(masterGain);
+    src.start(time);
+  }
+
+  function scheduler() {
+    if (!audioCtx) return;
+    while (nextNoteTime < audioCtx.currentTime + 0.1) {
+      const i = step % melody.length;
+      playMelody(nextNoteTime, melody[i]);
+      playBass(nextNoteTime, bass[i]);
+      if (hat[i]) playHat(nextNoteTime);
+      nextNoteTime += stepSec;
+      step++;
+    }
+  }
+
+  async function start() {
+    if (started) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = muted ? 0 : 0.5;
+      masterGain.connect(audioCtx.destination);
+      nextNoteTime = audioCtx.currentTime + 0.05;
+      step = 0;
+      started = true;
+      timerId = setInterval(scheduler, 25);
+    } catch (e) { /* audio not available */ }
+  }
+  function setMuted(m) {
+    muted = m;
+    if (masterGain) masterGain.gain.setTargetAtTime(m ? 0 : 0.5, audioCtx.currentTime, 0.05);
+  }
+  function isMuted() { return muted; }
+
+  return { start, setMuted, isMuted };
+})();
+
+// Mute toggle
+const muteBtn = document.getElementById('muteBtn');
+// Persist preference
+const SAVED_MUTE = localStorage.getItem('snowgame.muted') === '1';
+if (SAVED_MUTE) {
+  Music.setMuted(true);
+  muteBtn.classList.add('muted');
+  muteBtn.textContent = '🔇';
+}
+muteBtn.addEventListener('click', () => {
+  Music.start();   // first interaction starts music
+  const nowMuted = !Music.isMuted();
+  Music.setMuted(nowMuted);
+  muteBtn.classList.toggle('muted', nowMuted);
+  muteBtn.textContent = nowMuted ? '🔇' : '🔊';
+  localStorage.setItem('snowgame.muted', nowMuted ? '1' : '0');
+});
+
 // ---------- Inputs ----------
 const keys = {};
 window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
@@ -1136,7 +1273,7 @@ async function startRace() {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-startBtn.addEventListener('click', () => { startBtn.blur(); startRace(); });
+startBtn.addEventListener('click', () => { startBtn.blur(); Music.start(); startRace(); });
 // Also accept Enter/Space from the start screen
 window.addEventListener('keydown', e => {
   if (state.mode === 'menu' && (e.key === 'Enter' || e.key === ' ')) {
@@ -1175,11 +1312,10 @@ function updatePlayer(dt) {
   const proj = projectToTrack(player.position);
   const onTrack = proj.dist <= TRACK_HALF + 0.4;
 
-  // Steering scales mildly with speed
+  // Steering scales mildly with speed; ignore reverse so left/right always feels the same
   const speedNorm = Math.min(1, Math.abs(player.velocity) / MAX_SPEED);
   const steerScale = 0.55 + 0.45 * speedNorm;
-  const dirSign = player.velocity < 0 ? -1 : 1;
-  player.heading += inp.steer * STEER_RATE * steerScale * dirSign * dt;
+  player.heading += inp.steer * STEER_RATE * steerScale * dt;
 
   // Thrust + drag
   player.velocity += inp.thrust * ACCEL * dt;
@@ -1329,7 +1465,7 @@ function updateCamera(dt) {
     const t = performance.now() * 0.0002;
     camDesired.set(Math.cos(t) * 70, 38, Math.sin(t) * 70);
   }
-  camera.position.lerp(camDesired, Math.min(1, dt * (state.mode === 'menu' ? 1.5 : 4.5)));
+  camera.position.lerp(camDesired, Math.min(1, dt * (state.mode === 'menu' ? 1.5 : 8)));
   camTarget.lerp(new THREE.Vector3(player.position.x, player.position.y + 1.5, player.position.z),
                  Math.min(1, dt * 6));
   if (state.mode === 'menu') camTarget.set(0, 0, 0);
