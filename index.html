@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<!--
+  Paste your Origin Trial token here once registered at
+  https://developer.chrome.com/origintrials for the "canvas-draw-element" trial.
+  <meta http-equiv="origin-trial" content="PASTE_TOKEN_HERE">
+-->
+<title>Snow Game · HTML-in-Canvas</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #b3e0ff; font-family: 'Trebuchet MS', system-ui, sans-serif; color: #fff; }
+  canvas { display: block; }
+
+  #featureBadge {
+    position: fixed; top: 10px; left: 10px; z-index: 10;
+    background: rgba(13,58,102,0.85); padding: 8px 12px; border-radius: 8px;
+    font-size: 13px; font-weight: bold;
+  }
+  #featureBadge.ot { background: linear-gradient(135deg, #6a4dff, #2196f3); }
+
+  /* DOM templates that we render INTO the 3D scene (kept off-screen but laid out) */
+  #domStage {
+    position: fixed;
+    left: -9999px; top: 0;
+    pointer-events: none;
+  }
+  .name-card {
+    width: 220px;
+    padding: 10px 14px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,255,255,0.78));
+    color: #0d3a66;
+    font-weight: bold;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 6px 18px rgba(13,58,102,0.35);
+    border: 3px solid var(--accent, #ff4d4d);
+  }
+  .name-card .avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent, #ff4d4d);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #fff;
+    flex-shrink: 0;
+  }
+  .name-card .meta { display: flex; flex-direction: column; line-height: 1.15; }
+  .name-card .meta .name { font-size: 18px; }
+  .name-card .meta .sub  { font-size: 12px; color: #5b7898; font-weight: normal; }
+
+  #start {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(13,58,102,0.88);
+    z-index: 20;
+  }
+  #start .panel {
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.18);
+    border-radius: 16px;
+    padding: 24px 28px;
+    max-width: 520px;
+    text-align: center;
+  }
+  #start h1 { margin: 0 0 6px; }
+  #start p  { margin: 4px 0; opacity: .9; }
+  button.cta {
+    margin-top: 14px;
+    padding: 12px 24px; font-size: 18px; font-weight: bold;
+    background: #ffcd3c; color: #5c4a00;
+    border: none; border-radius: 12px; cursor: pointer;
+    box-shadow: 0 4px 0 #b8860b;
+  }
+  .built-by {
+    display: inline-block; padding: 6px 14px; margin-bottom: 10px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(255,205,60,0.22), rgba(255,205,60,0.05));
+    border: 1.5px solid rgba(255,205,60,0.5);
+    color: #fff8a3; font-size: 13px;
+  }
+  .built-by b { color: #fff; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="featureBadge">Detecting renderer…</div>
+
+<div id="domStage">
+  <!-- Each .name-card here is a real DOM node we paint into a Three.js texture. -->
+</div>
+
+<div id="start">
+  <div class="panel">
+    <div class="built-by">🎮 Game built by <b>Sreevarshan · Sreejan · Magizhini</b></div>
+    <h1>❄️ Snow Game · HTML-in-Canvas</h1>
+    <p>Experimental scene that paints real DOM cards onto 3D billboards.</p>
+    <p style="font-size:14px;opacity:.8">If the badge top-left says <b>HTMLTexture path</b>, your browser supports the Origin Trial feature. Otherwise we use the canvas fallback (still looks fine).</p>
+    <button id="startBtn" class="cta">Enter scene</button>
+  </div>
+</div>
+
+<canvas id="scene" layoutsubtree></canvas>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ---------- Feature detect ----------
+const ctxProbe = document.createElement('canvas').getContext('2d');
+const hasDrawElement =
+  typeof ctxProbe.drawElementImage === 'function' ||
+  typeof ctxProbe.drawElement === 'function' ||           // older spec name
+  typeof THREE.HTMLTexture === 'function';
+
+const featureBadge = document.getElementById('featureBadge');
+if (hasDrawElement) {
+  featureBadge.textContent = '✨ HTMLTexture path';
+  featureBadge.classList.add('ot');
+} else {
+  featureBadge.textContent = '🪶 Canvas fallback path';
+}
+
+// ---------- Demo data ----------
+const RACERS = [
+  { name: 'Sreejan',     sub: 'You',         color: '#ff4d4d', emoji: '🐧' },
+  { name: 'Sreevarshan', sub: 'Rival',       color: '#4dabff', emoji: '🐧' },
+  { name: 'Magizhini',   sub: 'Speedster',   color: '#ff7ad1', emoji: '🐧' },
+  { name: 'Frosty',      sub: 'NPC',         color: '#ffd14d', emoji: '🐧' },
+];
+
+// ---------- Build DOM cards (used by both code paths) ----------
+const domStage = document.getElementById('domStage');
+const cards = RACERS.map(r => {
+  const el = document.createElement('div');
+  el.className = 'name-card';
+  el.style.setProperty('--accent', r.color);
+  el.innerHTML = `
+    <div class="avatar">${r.emoji}</div>
+    <div class="meta">
+      <span class="name">${r.name}</span>
+      <span class="sub">${r.sub}</span>
+    </div>`;
+  domStage.appendChild(el);
+  return el;
+});
+
+// ---------- Scene boilerplate ----------
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfe6ff);
+scene.fog = new THREE.Fog(0xbfe6ff, 25, 80);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 4, 14);
+
+scene.add(new THREE.HemisphereLight(0xddeeff, 0xe6f1ff, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(10, 20, 10);
+scene.add(sun);
+
+// Snow ground
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(60, 64),
+  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 })
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// 4 stylized penguins in a row, each with a floating card above
+const penguins = [];
+const labelSprites = [];
+
+function makePenguin(color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 20, 14), new THREE.MeshStandardMaterial({ color: 0x141822 }));
+  body.scale.set(1, 1.2, 1); body.position.y = 1.2; g.add(body);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.7, 20, 14), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+  belly.scale.set(0.9, 1.05, 0.55); belly.position.set(0, 1.18, 0.5); g.add(belly);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.6, 20, 14), new THREE.MeshStandardMaterial({ color: 0x141822 }));
+  head.position.y = 2.5; g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 10), new THREE.MeshStandardMaterial({ color: 0xffb73a }));
+  beak.rotation.x = Math.PI / 2; beak.position.set(0, 2.4, 0.7); g.add(beak);
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.18, 10, 22), new THREE.MeshStandardMaterial({ color }));
+  scarf.rotation.x = Math.PI / 2; scarf.position.y = 1.95; g.add(scarf);
+  return g;
+}
+
+RACERS.forEach((r, i) => {
+  const p = makePenguin(parseInt(r.color.slice(1), 16));
+  p.position.x = (i - 1.5) * 3.6;
+  scene.add(p);
+  penguins.push(p);
+});
+
+// ---------- Label-rendering strategy ----------
+// Common: each label is a THREE.Sprite parented to its penguin, at y=4.
+// Path A (OT): THREE.HTMLTexture(cardElement) → swap once, browser keeps it in sync.
+// Path B (fallback): rasterize DOM → canvas via SVG foreignObject → CanvasTexture.
+
+async function buildLabelTexture(cardElement, color) {
+  if (hasDrawElement && typeof THREE.HTMLTexture === 'function') {
+    return new THREE.HTMLTexture(cardElement);
+  }
+  return await domToCanvasTexture(cardElement);
+}
+
+// Fallback: render the DOM card to a canvas by serializing as SVG with foreignObject.
+async function domToCanvasTexture(el) {
+  const rect = el.getBoundingClientRect();
+  const w = Math.max(220, rect.width);
+  const h = Math.max(70, rect.height);
+  const clone = el.cloneNode(true);
+  // Inline the styles we care about (very minimal; the stylesheet already covers it)
+  const xml = new XMLSerializer().serializeToString(clone);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+      <foreignObject width="100%" height="100%">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'Trebuchet MS',sans-serif">${xml}</div>
+      </foreignObject>
+    </svg>`;
+  const img = new Image();
+  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  const c = document.createElement('canvas');
+  c.width = w * 2; c.height = h * 2;
+  const ctx = c.getContext('2d');
+  ctx.scale(2, 2);
+  ctx.drawImage(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+for (let i = 0; i < RACERS.length; i++) {
+  const tex = await buildLabelTexture(cards[i], RACERS[i].color);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(3.4, 1.1, 1);
+  sprite.position.set(0, 4.2, 0);
+  penguins[i].add(sprite);
+  labelSprites.push(sprite);
+}
+
+// ---------- Start interaction ----------
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('start').classList.add('hidden');
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Snow particles
+const SNOW = 500;
+const snowGeo = new THREE.BufferGeometry();
+const snowPos = new Float32Array(SNOW * 3);
+for (let i = 0; i < SNOW; i++) {
+  snowPos[i*3+0] = (Math.random() - 0.5) * 60;
+  snowPos[i*3+1] = Math.random() * 30;
+  snowPos[i*3+2] = (Math.random() - 0.5) * 60;
+}
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.18, transparent: true, opacity: 0.85 }));
+scene.add(snow);
+
+let last = performance.now();
+function tick() {
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  const dt = (now - last) / 1000; last = now;
+
+  // Slow camera orbit
+  const t = now * 0.0002;
+  camera.position.x = Math.cos(t) * 14;
+  camera.position.z = Math.sin(t) * 14;
+  camera.position.y = 4 + Math.sin(t * 2) * 0.4;
+  camera.lookAt(0, 1.5, 0);
+
+  // Penguin idle bob
+  penguins.forEach((p, i) => {
+    p.position.y = Math.sin(now * 0.002 + i) * 0.08;
+  });
+
+  // Snow drift
+  const a = snowGeo.attributes.position;
+  for (let i = 0; i < SNOW; i++) {
+    a.array[i*3+1] -= dt * 1.5;
+    if (a.array[i*3+1] < 0) a.array[i*3+1] = 30;
+  }
+  a.needsUpdate = true;
+
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>

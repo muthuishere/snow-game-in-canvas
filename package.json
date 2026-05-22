@@ -1,0 +1,12 @@
+{
+  "name": "snow-game-in-canvas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experimental HTML-in-Canvas snow racing game",
+  "scripts": {
+    "play": "node scripts/play.js"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

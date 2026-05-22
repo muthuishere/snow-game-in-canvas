@@ -1,0 +1,46 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  install:
+    desc: Install local deps (http-server only — uses harness Playwright)
+    cmds:
+      - npm install
+
+  serve:
+    desc: Serve the game at http://localhost:8080
+    cmds:
+      - npx http-server -p 8080 -c-1 -s .
+
+  play:
+    desc: Serve + open in Chrome with the canvas-draw-element flag (best with Chrome 148+)
+    cmds:
+      - |
+        npx http-server -p 8080 -c-1 -s . &
+        SERVER_PID=$!
+        trap "kill $SERVER_PID 2>/dev/null" EXIT INT TERM
+        sleep 1
+        open -na "Google Chrome" --args \
+          --enable-blink-features=CanvasDrawElement \
+          --user-data-dir=/tmp/snow-game-chrome \
+          http://localhost:8080
+        echo "Chrome opened with CanvasDrawElement enabled. Ctrl+C here to stop the server."
+        wait $SERVER_PID
+
+  play-canary:
+    desc: Same as play, but uses Chrome Canary (if installed)
+    cmds:
+      - |
+        npx http-server -p 8080 -c-1 -s . &
+        SERVER_PID=$!
+        trap "kill $SERVER_PID 2>/dev/null" EXIT INT TERM
+        sleep 1
+        open -na "Google Chrome Canary" --args \
+          --enable-blink-features=CanvasDrawElement \
+          --user-data-dir=/tmp/snow-game-chrome-canary \
+          http://localhost:8080
+        wait $SERVER_PID
