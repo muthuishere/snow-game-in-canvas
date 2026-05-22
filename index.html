@@ -3,103 +3,352 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0d3a66" />
 <!--
-  Paste your Origin Trial token here once registered at
-  https://developer.chrome.com/origintrials for the "canvas-draw-element" trial.
+  Origin Trial token slot for canvas-draw-element (Chrome 148–150).
+  Register muthuishere.github.io at https://developer.chrome.com/origintrials
+  and paste the token below to enable the HTMLTexture path for all visitors.
   <meta http-equiv="origin-trial" content="PASTE_TOKEN_HERE">
 -->
-<title>Snow Game · HTML-in-Canvas</title>
+<title>Snow Race — Sreejan, Sreevarshan & Magizhini</title>
 <style>
-  html, body { margin: 0; padding: 0; overflow: hidden; background: #b3e0ff; font-family: 'Trebuchet MS', system-ui, sans-serif; color: #fff; }
+  :root {
+    --gold: #ffcd3c;
+    --gold-dark: #b8860b;
+    --ink: #0d3a66;
+    --ink-2: #1f6fb0;
+    --panel: rgba(13, 58, 102, 0.78);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    overflow: hidden;
+    background: #b3e0ff;
+    font-family: 'Trebuchet MS', system-ui, sans-serif;
+    color: #fff;
+    user-select: none;
+    touch-action: none;
+    -webkit-user-select: none;
+  }
   canvas { display: block; }
 
+  #title {
+    position: fixed;
+    top: 8px; left: 0; right: 0;
+    text-align: center;
+    z-index: 5;
+    pointer-events: none;
+    font-weight: bold;
+  }
+  #title h1 {
+    margin: 0;
+    font-size: clamp(18px, 4vw, 28px);
+    text-shadow: 2px 2px 0 var(--ink-2), 4px 4px 0 var(--ink);
+    letter-spacing: 1px;
+  }
+  #title .by {
+    margin-top: 2px;
+    font-size: clamp(11px, 2.5vw, 16px);
+    color: #fff8a3;
+    text-shadow: 1px 1px 0 var(--gold-dark);
+  }
+
+  .hud-panel {
+    position: fixed;
+    z-index: 6;
+    background: var(--panel);
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: clamp(13px, 2.5vw, 17px);
+    line-height: 1.35;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  #hudLeft { top: 64px; left: 10px; }
+  #hudRight { top: 64px; right: 10px; text-align: right; }
+  .hud-row { display: flex; align-items: center; gap: 6px; }
+  .pos-badge {
+    display: inline-block; min-width: 26px; text-align: center;
+    background: var(--gold); color: var(--ink);
+    padding: 2px 6px; border-radius: 6px;
+    box-shadow: 0 2px 0 var(--gold-dark);
+  }
+
+  #help {
+    position: fixed; bottom: 8px; left: 0; right: 0;
+    text-align: center; z-index: 4;
+    font-size: 13px;
+    text-shadow: 1px 1px 0 var(--ink);
+    pointer-events: none;
+  }
+  .touch #help { display: none; }
+  body.racing #title { display: none; }
+  body.racing #hudLeft { top: 10px; }
+  body.racing #hudRight { top: 10px; }
+  body.racing #tiltBtn { top: 14px; }
+
+  /* Overlay (start + end screens) */
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(13, 58, 102, 0.88);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 20; padding: 18px;
+  }
+  #overlay .panel {
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.18);
+    border-radius: 18px;
+    padding: 22px 26px;
+    max-width: 560px; width: 100%;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+  #overlay h2 {
+    margin: 0 0 8px;
+    font-size: clamp(22px, 5vw, 38px);
+    text-shadow: 2px 2px 0 var(--ink);
+  }
+  #overlay p {
+    margin: 4px 0;
+    font-size: clamp(14px, 3vw, 18px);
+    line-height: 1.45;
+  }
+  #standings {
+    margin: 14px auto 6px;
+    text-align: left;
+    max-width: 380px;
+  }
+  .standing-row {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    margin: 4px 0;
+    background: rgba(255,255,255,0.06);
+    font-size: clamp(13px, 3vw, 16px);
+  }
+  .standing-row.you {
+    background: rgba(255,205,60,0.18);
+    border: 1px solid rgba(255,205,60,0.55);
+  }
+  .standing-rank { font-weight: bold; font-size: 18px; }
+  .standing-name { display: flex; align-items: center; gap: 8px; }
+  .swatch { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .standing-coins { color: var(--gold); font-weight: bold; }
+
+  .built-by {
+    display: inline-block;
+    padding: 8px 16px;
+    margin-bottom: 12px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(255,205,60,0.25), rgba(255,205,60,0.05));
+    border: 1.5px solid rgba(255,205,60,0.55);
+    color: #fff8a3;
+    font-size: clamp(12px, 2.6vw, 15px);
+    line-height: 1.35;
+  }
+  .built-by b { color: #fff; font-size: 1.08em; letter-spacing: 0.5px; }
+
+  button.cta {
+    margin-top: 14px;
+    padding: 12px 26px;
+    font-size: clamp(15px, 3.5vw, 19px);
+    font-weight: bold;
+    background: var(--gold);
+    color: #5c4a00;
+    border: none; border-radius: 12px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 var(--gold-dark);
+    transition: transform .05s, box-shadow .05s;
+  }
+  button.cta:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 var(--gold-dark);
+  }
+  .hidden { display: none !important; }
+
+  /* Countdown */
+  #countdown {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 15; pointer-events: none;
+    font-size: clamp(80px, 24vw, 220px);
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 4px 4px 0 var(--ink-2), 8px 8px 0 var(--ink);
+  }
+
+  /* Touch UI */
+  #touchUI { display: none; }
+  .touch #touchUI { display: block; }
+
+  #joystick {
+    position: fixed;
+    left: 24px; bottom: 24px;
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    border: 3px solid rgba(255,255,255,0.4);
+    z-index: 7;
+    touch-action: none;
+  }
+  #joystick .stick {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 56px; height: 56px;
+    margin-left: -28px; margin-top: -28px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 4px 0 var(--gold-dark);
+    transition: background .1s;
+  }
+  #joystick.active .stick { background: #fff; box-shadow: 0 4px 0 #aaa; }
+
+  .tap-btn {
+    position: fixed;
+    bottom: 24px;
+    width: 78px; height: 78px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    border: 3px solid rgba(255,255,255,0.4);
+    color: #fff;
+    font-size: 38px; font-weight: bold;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 7;
+    touch-action: none;
+  }
+  #tapLeft  { right: 124px; }
+  #tapRight { right: 28px; }
+  .tap-btn.active { background: rgba(255,205,60,0.5); }
+
+  #tiltBtn {
+    position: fixed;
+    top: 64px;
+    right: 50%;
+    transform: translateX(50%);
+    z-index: 7;
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: var(--panel);
+    color: #fff;
+    border: 2px solid rgba(255,255,255,0.3);
+    font-weight: bold; font-size: 13px;
+    cursor: pointer;
+  }
+  #tiltBtn.active { background: var(--gold); color: var(--ink); border-color: var(--gold-dark); }
+
+  #respawnFlash {
+    position: fixed; inset: 0;
+    background: rgba(255,255,255,0.0);
+    z-index: 14;
+    pointer-events: none;
+    transition: background .25s;
+  }
+  #respawnFlash.show { background: rgba(255,255,255,0.55); }
+
+  #fallToast {
+    position: fixed; top: 32%; left: 0; right: 0;
+    text-align: center; z-index: 18;
+    font-size: clamp(20px, 5vw, 36px); font-weight: bold;
+    color: #ffcd3c;
+    text-shadow: 2px 2px 0 var(--ink);
+    pointer-events: none;
+    opacity: 0; transition: opacity .25s;
+  }
+  #fallToast.show { opacity: 1; }
+
+  /* Feature-detect badge */
   #featureBadge {
-    position: fixed; top: 10px; left: 10px; z-index: 10;
-    background: rgba(13,58,102,0.85); padding: 8px 12px; border-radius: 8px;
-    font-size: 13px; font-weight: bold;
+    position: fixed; bottom: 6px; right: 8px; z-index: 5;
+    background: rgba(13,58,102,0.78); padding: 4px 9px; border-radius: 6px;
+    font-size: 11px; font-weight: bold; opacity: 0.85;
+    pointer-events: none;
   }
   #featureBadge.ot { background: linear-gradient(135deg, #6a4dff, #2196f3); }
+  body.racing #featureBadge { opacity: 0.5; }
 
-  /* DOM templates that we render INTO the 3D scene (kept off-screen but laid out) */
+  /* DOM stage for HTML-in-Canvas name cards (kept off-screen) */
   #domStage {
-    position: fixed;
-    left: -9999px; top: 0;
+    position: fixed; left: -9999px; top: 0;
     pointer-events: none;
   }
   .name-card {
-    width: 220px;
+    width: 260px;
     padding: 10px 14px;
-    border-radius: 18px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,255,255,0.78));
+    border-radius: 22px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(255,255,255,0.82));
     color: #0d3a66;
+    font-family: 'Trebuchet MS', system-ui, sans-serif;
     font-weight: bold;
-    display: flex; align-items: center; gap: 10px;
-    box-shadow: 0 6px 18px rgba(13,58,102,0.35);
-    border: 3px solid var(--accent, #ff4d4d);
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 8px 22px rgba(13,58,102,0.4);
+    border: 4px solid var(--accent, #ff4d4d);
   }
   .name-card .avatar {
-    width: 44px; height: 44px; border-radius: 50%;
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 3px solid var(--accent, #ff4d4d);
     background: var(--accent, #ff4d4d);
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .name-card .avatar-emoji {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--accent, #ff4d4d);
+    color: #fff;
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px; color: #fff;
+    font-size: 28px;
     flex-shrink: 0;
   }
   .name-card .meta { display: flex; flex-direction: column; line-height: 1.15; }
-  .name-card .meta .name { font-size: 18px; }
-  .name-card .meta .sub  { font-size: 12px; color: #5b7898; font-weight: normal; }
-
-  #start {
-    position: fixed; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(13,58,102,0.88);
-    z-index: 20;
-  }
-  #start .panel {
-    background: rgba(255,255,255,0.06);
-    border: 2px solid rgba(255,255,255,0.18);
-    border-radius: 16px;
-    padding: 24px 28px;
-    max-width: 520px;
-    text-align: center;
-  }
-  #start h1 { margin: 0 0 6px; }
-  #start p  { margin: 4px 0; opacity: .9; }
-  button.cta {
-    margin-top: 14px;
-    padding: 12px 24px; font-size: 18px; font-weight: bold;
-    background: #ffcd3c; color: #5c4a00;
-    border: none; border-radius: 12px; cursor: pointer;
-    box-shadow: 0 4px 0 #b8860b;
-  }
-  .built-by {
-    display: inline-block; padding: 6px 14px; margin-bottom: 10px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, rgba(255,205,60,0.22), rgba(255,205,60,0.05));
-    border: 1.5px solid rgba(255,205,60,0.5);
-    color: #fff8a3; font-size: 13px;
-  }
-  .built-by b { color: #fff; }
-  .hidden { display: none !important; }
+  .name-card .meta .name { font-size: 22px; }
+  .name-card .meta .sub  { font-size: 13px; color: #5b7898; font-weight: normal; }
 </style>
 </head>
 <body>
-<div id="featureBadge">Detecting renderer…</div>
-
-<div id="domStage">
-  <!-- Each .name-card here is a real DOM node we paint into a Three.js texture. -->
+<div id="featureBadge">…</div>
+<div id="domStage"></div>
+<div id="title">
+  <h1>❄️ Snow Race 🏁</h1>
+  <div class="by">Built by Sreevarshan, Sreejan &amp; Magizhini</div>
 </div>
 
-<div id="start">
+<div id="hudLeft" class="hud-panel hidden">
+  <div class="hud-row">Pos <span class="pos-badge" id="pos">—</span></div>
+  <div>Lap <span id="lap">1</span>/<span id="totalLaps">2</span></div>
+  <div>CP <span id="cp">0</span>/6</div>
+</div>
+<div id="hudRight" class="hud-panel hidden">
+  <div>Time <span id="time">0.0</span>s</div>
+  <div>Speed <span id="speed">0</span></div>
+</div>
+
+<div id="help">Arrow keys / WASD to skate · ↑ accelerate · ↓ brake</div>
+
+<div id="countdown" class="hidden">3</div>
+<div id="respawnFlash"></div>
+<div id="fallToast">Oops! Back to checkpoint 🐧</div>
+
+<div id="touchUI">
+  <div id="joystick"><div class="stick"></div></div>
+  <div id="tapLeft" class="tap-btn">◀</div>
+  <div id="tapRight" class="tap-btn">▶</div>
+  <button id="tiltBtn">📱 Tilt</button>
+</div>
+
+<div id="overlay">
   <div class="panel">
-    <div class="built-by">🎮 Game built by <b>Sreevarshan · Sreejan · Magizhini</b></div>
-    <h1>❄️ Snow Game · HTML-in-Canvas</h1>
-    <p>Experimental scene that paints real DOM cards onto 3D billboards.</p>
-    <p style="font-size:14px;opacity:.8">If the badge top-left says <b>HTMLTexture path</b>, your browser supports the Origin Trial feature. Otherwise we use the canvas fallback (still looks fine).</p>
-    <button id="startBtn" class="cta">Enter scene</button>
+    <div class="built-by">🎮 Game built by<br><b>Sreevarshan · Sreejan · Magizhini</b></div>
+    <h2>❄️ Snow Race</h2>
+    <p>Help <b>Sreejan</b> race against Sreevarshan, Magizhini &amp; Frosty through the snowy mountains.</p>
+    <p>🏁 2 laps · 6 checkpoints per lap · don't fall off the cliff!</p>
+    <p style="font-size:14px;opacity:.85">1st = <b style="color:#ffcd3c">100 coins</b> · 2nd = 60 · 3rd = 30 · 4th = 10</p>
+    <button id="startBtn" class="cta">Start Race!</button>
   </div>
 </div>
-
-<canvas id="scene" layoutsubtree></canvas>
 
 <script type="importmap">
 {
@@ -112,200 +361,1062 @@
 <script type="module">
 import * as THREE from 'three';
 
-// ---------- Feature detect ----------
-const ctxProbe = document.createElement('canvas').getContext('2d');
-const hasDrawElement =
-  typeof ctxProbe.drawElementImage === 'function' ||
-  typeof ctxProbe.drawElement === 'function' ||           // older spec name
-  typeof THREE.HTMLTexture === 'function';
+// ---------- Detect mobile/touch ----------
+const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+if (isTouch) document.body.classList.add('touch');
 
-const featureBadge = document.getElementById('featureBadge');
-if (hasDrawElement) {
-  featureBadge.textContent = '✨ HTMLTexture path';
-  featureBadge.classList.add('ot');
-} else {
-  featureBadge.textContent = '🪶 Canvas fallback path';
-}
+// ---------- DOM ----------
+const overlay = document.getElementById('overlay');
+const overlayPanel = overlay.querySelector('.panel');
+const startBtn = document.getElementById('startBtn');
+const hudLeft = document.getElementById('hudLeft');
+const hudRight = document.getElementById('hudRight');
+const posEl = document.getElementById('pos');
+const lapEl = document.getElementById('lap');
+const totalLapsEl = document.getElementById('totalLaps');
+const cpEl = document.getElementById('cp');
+const timeEl = document.getElementById('time');
+const speedEl = document.getElementById('speed');
+const countdownEl = document.getElementById('countdown');
+const respawnFlash = document.getElementById('respawnFlash');
+const fallToast = document.getElementById('fallToast');
 
-// ---------- Demo data ----------
+// ---------- Constants ----------
+const NUM_LAPS = 2;
+const NUM_CHECKPOINTS = 6;
+const TRACK_WIDTH = 12;
+const TRACK_HALF = TRACK_WIDTH / 2;
+const TRACK_Y = 2.0;
+const GRAVITY = 24;
+const FALL_Y = -12;
+const MAX_SPEED = 22;
+const REVERSE_SPEED = 7;
+const ACCEL = 22;
+const STEER_RATE = 2.3;
+const OFFTRACK_DRAG = 0.95;
+const ONTRACK_DRAG = 0.992;
+
 const RACERS = [
-  { name: 'Sreejan',     sub: 'You',         color: '#ff4d4d', emoji: '🐧' },
-  { name: 'Sreevarshan', sub: 'Rival',       color: '#4dabff', emoji: '🐧' },
-  { name: 'Magizhini',   sub: 'Speedster',   color: '#ff7ad1', emoji: '🐧' },
-  { name: 'Frosty',      sub: 'NPC',         color: '#ffd14d', emoji: '🐧' },
+  { id: 'sreejan',     name: 'Sreejan',     sub: 'You',       color: 0xff4d4d, isPlayer: true, photo: 'assets/sreejan.jpg' },
+  { id: 'sreevarshan', name: 'Sreevarshan', sub: 'Rival',     color: 0x4dabff, photo: 'assets/sreevarshan.jpg' },
+  { id: 'magizhini',   name: 'Magizhini',   sub: 'Speedster', color: 0xff7ad1, photo: 'assets/magizhini.jpg' },
+  { id: 'frosty',      name: 'Frosty',      sub: 'Penguin',   color: 0xffd14d },
 ];
 
-// ---------- Build DOM cards (used by both code paths) ----------
-const domStage = document.getElementById('domStage');
-const cards = RACERS.map(r => {
-  const el = document.createElement('div');
-  el.className = 'name-card';
-  el.style.setProperty('--accent', r.color);
-  el.innerHTML = `
-    <div class="avatar">${r.emoji}</div>
-    <div class="meta">
-      <span class="name">${r.name}</span>
-      <span class="sub">${r.sub}</span>
-    </div>`;
-  domStage.appendChild(el);
-  return el;
-});
-
-// ---------- Scene boilerplate ----------
-const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// ---------- Renderer ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
 
+// ---------- Scene ----------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbfe6ff);
-scene.fog = new THREE.Fog(0xbfe6ff, 25, 80);
+scene.fog = new THREE.Fog(0xbfe6ff, 60, 220);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(0, 4, 14);
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 600);
+camera.position.set(0, 12, -14);
 
-scene.add(new THREE.HemisphereLight(0xddeeff, 0xe6f1ff, 0.9));
-const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-sun.position.set(10, 20, 10);
+// ---------- Lights ----------
+const hemi = new THREE.HemisphereLight(0xddeeff, 0xe6f1ff, 0.85);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xffffff, 1.05);
+sun.position.set(40, 60, 25);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -80; sun.shadow.camera.right = 80;
+sun.shadow.camera.top = 80;   sun.shadow.camera.bottom = -80;
+sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 200;
+sun.shadow.bias = -0.0005;
 scene.add(sun);
 
-// Snow ground
-const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(60, 64),
-  new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 })
-);
-ground.rotation.x = -Math.PI / 2;
-scene.add(ground);
+// ---------- Curve / track ----------
+const curvePoints = [
+  new THREE.Vector3( 38,  0,   0),
+  new THREE.Vector3( 32,  0,  28),
+  new THREE.Vector3(  6,  0,  42),
+  new THREE.Vector3(-22,  0,  34),
+  new THREE.Vector3(-46,  0,  10),
+  new THREE.Vector3(-42,  0, -22),
+  new THREE.Vector3(-10,  0, -42),
+  new THREE.Vector3( 22,  0, -36),
+  new THREE.Vector3( 40,  0, -16),
+];
+const curve = new THREE.CatmullRomCurve3(curvePoints, true, 'catmullrom', 0.5);
+const CURVE_LEN = curve.getLength();
 
-// 4 stylized penguins in a row, each with a floating card above
-const penguins = [];
-const labelSprites = [];
+// Build a flat ribbon mesh that follows the curve
+const TRACK_SEGMENTS = 320;
+const trackSamples = [];   // {t, pos, tangent, normal}
+for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+  const t = i / TRACK_SEGMENTS;
+  const pos = curve.getPointAt(t % 1);
+  const tan = curve.getTangentAt(t % 1).normalize();
+  // perpendicular in XZ plane
+  const normal = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+  trackSamples.push({ t, pos, tangent: tan, normal });
+}
 
-function makePenguin(color) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 20, 14), new THREE.MeshStandardMaterial({ color: 0x141822 }));
-  body.scale.set(1, 1.2, 1); body.position.y = 1.2; g.add(body);
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.7, 20, 14), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-  belly.scale.set(0.9, 1.05, 0.55); belly.position.set(0, 1.18, 0.5); g.add(belly);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.6, 20, 14), new THREE.MeshStandardMaterial({ color: 0x141822 }));
-  head.position.y = 2.5; g.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 10), new THREE.MeshStandardMaterial({ color: 0xffb73a }));
-  beak.rotation.x = Math.PI / 2; beak.position.set(0, 2.4, 0.7); g.add(beak);
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.18, 10, 22), new THREE.MeshStandardMaterial({ color }));
-  scarf.rotation.x = Math.PI / 2; scarf.position.y = 1.95; g.add(scarf);
+function buildTrackMesh() {
+  const positions = [];
+  const indices = [];
+  const uvs = [];
+  for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+    const s = trackSamples[i];
+    const left  = s.pos.clone().addScaledVector(s.normal,  TRACK_HALF);
+    const right = s.pos.clone().addScaledVector(s.normal, -TRACK_HALF);
+    positions.push(left.x, TRACK_Y, left.z);
+    positions.push(right.x, TRACK_Y, right.z);
+    uvs.push(0, i * 0.5);
+    uvs.push(1, i * 0.5);
+  }
+  for (let i = 0; i < TRACK_SEGMENTS; i++) {
+    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+    indices.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setIndex(indices);
+  g.computeVertexNormals();
   return g;
 }
 
-RACERS.forEach((r, i) => {
-  const p = makePenguin(parseInt(r.color.slice(1), 16));
-  p.position.x = (i - 1.5) * 3.6;
-  scene.add(p);
-  penguins.push(p);
-});
-
-// ---------- Label-rendering strategy ----------
-// Common: each label is a THREE.Sprite parented to its penguin, at y=4.
-// Path A (OT): THREE.HTMLTexture(cardElement) → swap once, browser keeps it in sync.
-// Path B (fallback): rasterize DOM → canvas via SVG foreignObject → CanvasTexture.
-
-async function buildLabelTexture(cardElement, color) {
-  if (hasDrawElement && typeof THREE.HTMLTexture === 'function') {
-    return new THREE.HTMLTexture(cardElement);
-  }
-  return await domToCanvasTexture(cardElement);
-}
-
-// Fallback: render the DOM card to a canvas by serializing as SVG with foreignObject.
-async function domToCanvasTexture(el) {
-  const rect = el.getBoundingClientRect();
-  const w = Math.max(220, rect.width);
-  const h = Math.max(70, rect.height);
-  const clone = el.cloneNode(true);
-  // Inline the styles we care about (very minimal; the stylesheet already covers it)
-  const xml = new XMLSerializer().serializeToString(clone);
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
-      <foreignObject width="100%" height="100%">
-        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'Trebuchet MS',sans-serif">${xml}</div>
-      </foreignObject>
-    </svg>`;
-  const img = new Image();
-  const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+// Procedural ice texture (canvas-based, subtle stripes for speed feel)
+function makeIceTexture() {
   const c = document.createElement('canvas');
-  c.width = w * 2; c.height = h * 2;
+  c.width = 64; c.height = 256;
   const ctx = c.getContext('2d');
-  ctx.scale(2, 2);
-  ctx.drawImage(img, 0, 0);
+  const grd = ctx.createLinearGradient(0, 0, 64, 0);
+  grd.addColorStop(0, '#a9d8f0');
+  grd.addColorStop(0.5, '#deeffb');
+  grd.addColorStop(1, '#a9d8f0');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 64, 256);
+  // dashed center line
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  for (let y = 0; y < 256; y += 28) {
+    ctx.fillRect(30, y, 4, 14);
+  }
   const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-for (let i = 0; i < RACERS.length; i++) {
-  const tex = await buildLabelTexture(cards[i], RACERS[i].color);
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
-  const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(3.4, 1.1, 1);
-  sprite.position.set(0, 4.2, 0);
-  penguins[i].add(sprite);
-  labelSprites.push(sprite);
+const trackMat = new THREE.MeshStandardMaterial({
+  map: makeIceTexture(),
+  roughness: 0.35,
+  metalness: 0.08,
+});
+const trackMesh = new THREE.Mesh(buildTrackMesh(), trackMat);
+trackMesh.receiveShadow = true;
+scene.add(trackMesh);
+
+// Track edge stripes (red/white) on both sides
+function buildEdge(side) {
+  const positions = [];
+  const indices = [];
+  const colors = [];
+  const stripeW = 0.5;
+  for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+    const s = trackSamples[i];
+    const outer = s.pos.clone().addScaledVector(s.normal, side * (TRACK_HALF + stripeW));
+    const inner = s.pos.clone().addScaledVector(s.normal, side * TRACK_HALF);
+    positions.push(outer.x, TRACK_Y + 0.02, outer.z);
+    positions.push(inner.x, TRACK_Y + 0.02, inner.z);
+    const c = (i % 2 === 0) ? [1, 0.18, 0.18] : [1, 1, 1];
+    colors.push(...c, ...c);
+  }
+  for (let i = 0; i < TRACK_SEGMENTS; i++) {
+    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+    indices.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  const m = new THREE.MeshBasicMaterial({ vertexColors: true });
+  return new THREE.Mesh(g, m);
+}
+scene.add(buildEdge(1));
+scene.add(buildEdge(-1));
+
+// Underside of track (so falling off looks like a real drop)
+function buildTrackUnderside() {
+  const positions = [];
+  const indices = [];
+  const depth = 1.5;
+  for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+    const s = trackSamples[i];
+    const left  = s.pos.clone().addScaledVector(s.normal,  TRACK_HALF);
+    const right = s.pos.clone().addScaledVector(s.normal, -TRACK_HALF);
+    // top edge of side wall (= track surface level)
+    positions.push(left.x, TRACK_Y, left.z);
+    positions.push(left.x, TRACK_Y - depth, left.z);
+    positions.push(right.x, TRACK_Y, right.z);
+    positions.push(right.x, TRACK_Y - depth, right.z);
+  }
+  for (let i = 0; i < TRACK_SEGMENTS; i++) {
+    const base = i * 4;
+    // left wall
+    indices.push(base + 0, base + 4, base + 1, base + 1, base + 4, base + 5);
+    // right wall (flipped winding)
+    indices.push(base + 2, base + 3, base + 6, base + 3, base + 7, base + 6);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setIndex(indices);
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xeaf5ff, roughness: 0.7 }));
+}
+scene.add(buildTrackUnderside());
+
+// ---------- Distant abyss (so falling looks dramatic) ----------
+const abyss = new THREE.Mesh(
+  new THREE.PlaneGeometry(800, 800),
+  new THREE.MeshBasicMaterial({ color: 0x6fb0d8 })
+);
+abyss.rotation.x = -Math.PI / 2;
+abyss.position.y = -40;
+scene.add(abyss);
+
+// ---------- Mountains ring ----------
+function makeMountain(h, baseR, color) {
+  const g = new THREE.Group();
+  const rock = new THREE.Mesh(
+    new THREE.ConeGeometry(baseR, h, 7),
+    new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true })
+  );
+  rock.position.y = h / 2;
+  rock.castShadow = false;
+  rock.receiveShadow = true;
+  g.add(rock);
+  const cap = new THREE.Mesh(
+    new THREE.ConeGeometry(baseR * 0.5, h * 0.45, 7),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true })
+  );
+  cap.position.y = h * 0.78;
+  g.add(cap);
+  return g;
+}
+const mountainColors = [0x5a6c7e, 0x4b5b6e, 0x6c7d8e, 0x40526b];
+for (let ring = 0; ring < 2; ring++) {
+  const count = 14 + ring * 4;
+  const baseR = 130 + ring * 50;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.18;
+    const r = baseR + (Math.random() - 0.5) * 40;
+    const h = 36 + Math.random() * 50 + ring * 14;
+    const bR = h * (0.45 + Math.random() * 0.18);
+    const m = makeMountain(h, bR, mountainColors[i % mountainColors.length]);
+    m.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+    m.rotation.y = Math.random() * Math.PI;
+    scene.add(m);
+  }
 }
 
-// ---------- Start interaction ----------
-document.getElementById('startBtn').addEventListener('click', () => {
-  document.getElementById('start').classList.add('hidden');
+// ---------- Snow particles ----------
+function makeSnow() {
+  const COUNT = 700;
+  const positions = new Float32Array(COUNT * 3);
+  for (let i = 0; i < COUNT; i++) {
+    positions[i*3+0] = (Math.random() - 0.5) * 180;
+    positions[i*3+1] = Math.random() * 60;
+    positions[i*3+2] = (Math.random() - 0.5) * 180;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const m = new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.35, transparent: true, opacity: 0.85,
+    depthWrite: false,
+  });
+  return new THREE.Points(g, m);
+}
+const snow = makeSnow();
+scene.add(snow);
+
+// ---------- Feature detection: HTML-in-Canvas Origin Trial ----------
+const ctxProbe = document.createElement('canvas').getContext('2d');
+const hasDrawElementImage = typeof ctxProbe.drawElementImage === 'function';
+const hasHTMLTexture = typeof THREE.HTMLTexture === 'function';
+const supportsHTMLPath = hasDrawElementImage || hasHTMLTexture;
+const featureBadge = document.getElementById('featureBadge');
+if (supportsHTMLPath) {
+  featureBadge.textContent = '✨ HTMLTexture path';
+  featureBadge.classList.add('ot');
+} else {
+  featureBadge.textContent = '🪶 Canvas fallback';
+}
+
+// ---------- Name-card DOM (used by HTMLTexture path, and as source for canvas path) ----------
+const domStage = document.getElementById('domStage');
+function buildNameCardDOM(config) {
+  const card = document.createElement('div');
+  card.className = 'name-card';
+  const hex = '#' + config.color.toString(16).padStart(6, '0');
+  card.style.setProperty('--accent', hex);
+  const avatar = config.photo
+    ? `<img class="avatar" src="${config.photo}" alt="${config.name}">`
+    : `<div class="avatar-emoji">🐧</div>`;
+  card.innerHTML = `
+    ${avatar}
+    <div class="meta">
+      <span class="name">${config.name}</span>
+      <span class="sub">${config.sub || ''}</span>
+    </div>`;
+  domStage.appendChild(card);
+  return card;
+}
+
+// ---------- HTML-in-Canvas label (preferred path) ----------
+function makeHTMLLabelTexture(cardEl) {
+  return new THREE.HTMLTexture(cardEl);
+}
+
+// ---------- Canvas fallback: rasterize the same DOM via SVG foreignObject ----------
+async function makeDOMSnapshotTexture(cardEl) {
+  // Wait for image inside card to load (so the photo is included in the snapshot)
+  const img = cardEl.querySelector('img.avatar');
+  if (img && !img.complete) {
+    await new Promise(res => { img.onload = res; img.onerror = res; });
+  }
+  // For the canvas fallback we still use the photo-clipped circle (works everywhere).
+  // SVG foreignObject can't reliably embed cross-stylesheet CSS without inlining; the
+  // photo+ring badge is a faithful enough representation.
+  return null;
+}
+
+// ---------- Face badge texture (photo clipped to colored ring) -- canvas fallback ----------
+function makeBadgeTexture(photoUrl, ringColor) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 256;
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const ctx = c.getContext('2d');
+      // Ring background
+      const hex = '#' + ringColor.toString(16).padStart(6, '0');
+      ctx.fillStyle = hex;
+      ctx.beginPath(); ctx.arc(size/2, size/2, size/2, 0, Math.PI*2); ctx.fill();
+      // White inner ring for contrast
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(size/2, size/2, size/2 - 10, 0, Math.PI*2); ctx.fill();
+      // Photo clipped to inner circle, biased upward to favor faces
+      const inset = 18;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size/2 - inset, 0, Math.PI*2);
+      ctx.clip();
+      const innerD = (size - inset * 2);
+      const ar = img.width / img.height;
+      let dw, dh;
+      if (ar > 1) { dh = innerD * 1.6; dw = dh * ar; }
+      else        { dw = innerD * 1.2; dh = dw / ar; }
+      const dx = (size - dw) / 2;
+      // Bias upward (faces are typically in upper part of photos)
+      const dy = inset + (innerD - dh) * 0.15;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.restore();
+      // Outer ring stroke
+      ctx.strokeStyle = hex;
+      ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.arc(size/2, size/2, size/2 - inset + 4, 0, Math.PI*2); ctx.stroke();
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      resolve(tex);
+    };
+    img.onerror = () => resolve(null);
+    img.src = photoUrl;
+  });
+}
+
+async function attachFaceBadge(penguin, config) {
+  let tex = null;
+  let scale = [1.6, 1.6, 1];
+  if (supportsHTMLPath) {
+    // Build DOM card and project it into the world via HTMLTexture
+    const card = buildNameCardDOM(config);
+    try {
+      tex = makeHTMLLabelTexture(card);
+      scale = [3.4, 1.2, 1]; // wider card aspect
+    } catch (e) {
+      tex = null;
+    }
+  }
+  if (!tex && config.photo) {
+    tex = await makeBadgeTexture(config.photo, config.color);
+  }
+  if (!tex) return;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(...scale);
+  sprite.position.set(0, 4.1, 0);
+  penguin.add(sprite);
+  penguin.userData.badge = sprite;
+}
+
+// ---------- Penguin model ----------
+function makePenguin(scarfColor) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x141822, roughness: 0.55 });
+  const bellyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+  const beakMat = new THREE.MeshStandardMaterial({ color: 0xffb73a, roughness: 0.45 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+  const scarfMat = new THREE.MeshStandardMaterial({ color: scarfColor, roughness: 0.7 });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.95, 22, 16), bodyMat);
+  body.scale.set(1, 1.22, 1);
+  body.position.y = 1.25;
+  body.castShadow = true;
+  g.add(body);
+
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.72, 22, 16), bellyMat);
+  belly.scale.set(0.9, 1.1, 0.6);
+  belly.position.set(0, 1.2, 0.5);
+  g.add(belly);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.62, 22, 16), bodyMat);
+  head.position.set(0, 2.6, 0);
+  head.castShadow = true;
+  g.add(head);
+
+  // Scarf around neck
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.18, 10, 24), scarfMat);
+  scarf.rotation.x = Math.PI / 2;
+  scarf.position.set(0, 1.95, 0);
+  scarf.castShadow = true;
+  g.add(scarf);
+  const scarfTail = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.6, 0.08), scarfMat);
+  scarfTail.position.set(0.42, 1.65, 0.18);
+  scarfTail.rotation.z = -0.4;
+  scarfTail.castShadow = true;
+  g.add(scarfTail);
+
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), eyeWhiteMat);
+  eyeL.position.set(-0.2, 2.7, 0.5);
+  g.add(eyeL);
+  const eyeR = eyeL.clone(); eyeR.position.x = 0.2; g.add(eyeR);
+  const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 8), eyeMat);
+  pupilL.position.set(-0.2, 2.7, 0.6); g.add(pupilL);
+  const pupilR = pupilL.clone(); pupilR.position.x = 0.2; g.add(pupilR);
+
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.45, 12), beakMat);
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, 2.5, 0.72);
+  g.add(beak);
+
+  const wingGeo = new THREE.SphereGeometry(0.38, 14, 10);
+  const wingL = new THREE.Mesh(wingGeo, bodyMat);
+  wingL.scale.set(0.38, 1.15, 0.8);
+  wingL.position.set(-0.9, 1.35, 0);
+  wingL.castShadow = true; g.add(wingL);
+  const wingR = wingL.clone(); wingR.position.x = 0.9; g.add(wingR);
+
+  const footGeo = new THREE.BoxGeometry(0.36, 0.13, 0.6);
+  const footL = new THREE.Mesh(footGeo, beakMat);
+  footL.position.set(-0.32, 0.07, 0.18); footL.castShadow = true; g.add(footL);
+  const footR = footL.clone(); footR.position.x = 0.32; g.add(footR);
+
+  g.userData = { wingL, wingR, body, head };
+  return g;
+}
+
+// ---------- Racers ----------
+class Racer {
+  constructor(config, idx) {
+    this.config = config;
+    this.idx = idx;
+    this.mesh = makePenguin(config.color);
+    // Skip the player's own badge so it doesn't block the third-person view
+    if (!config.isPlayer) attachFaceBadge(this.mesh, config);
+    scene.add(this.mesh);
+    this.lap = 0;
+    this.t = 0;
+    this.nextCp = 0;
+    this.position = new THREE.Vector3();
+    this.heading = 0;
+    this.velocity = 0;
+    this.velocityY = 0;
+    this.lastSafe = new THREE.Vector3();
+    this.lastSafeHeading = 0;
+    this.finishProgress = 0;
+    this.finished = false;
+    this.finishTime = null;
+    if (!config.isPlayer) {
+      // NPC target speed (units/sec along track)
+      this.npcBaseSpeed = 12.5 + Math.random() * 2.2;
+    }
+    // Pole-position-style 2x2 starting grid
+    const grid = [
+      { t: 0.004, lane: -2.8 },  // Player (Sreejan)
+      { t: 0.004, lane:  2.8 },  // Sreevarshan
+      { t: 0.985, lane: -2.8 },  // Magizhini
+      { t: 0.985, lane:  2.8 },  // Frosty
+    ];
+    this.startT = grid[idx].t;
+    this.laneOffset = grid[idx].lane;
+  }
+
+  resetToStart() {
+    const s = sampleCurve(this.startT);
+    this.t = this.startT;
+    this.lap = 0;
+    this.nextCp = 0;
+    this.finished = false;
+    this.finishTime = null;
+    this.position.copy(s.pos).addScaledVector(s.normal, this.laneOffset);
+    this.position.y = TRACK_Y;
+    this.heading = Math.atan2(s.tangent.x, s.tangent.z);
+    this.velocity = 0;
+    this.velocityY = 0;
+    this.lastSafe.copy(this.position);
+    this.lastSafeHeading = this.heading;
+    this.mesh.position.copy(this.position);
+    this.mesh.rotation.y = this.heading;
+  }
+
+  progress() {
+    // Higher is further ahead; used for ranking
+    if (this.finished) return NUM_LAPS + 1 - (this.finishTime || 0) * 1e-6;
+    return this.lap + this.t;
+  }
+}
+
+function sampleCurve(t) {
+  t = ((t % 1) + 1) % 1;
+  const i = Math.floor(t * TRACK_SEGMENTS);
+  return trackSamples[i] || trackSamples[0];
+}
+
+// Build racers
+const racers = RACERS.map((cfg, i) => new Racer(cfg, i));
+const player = racers[0];
+
+// ---------- Checkpoints ----------
+const checkpoints = [];
+function makeArch(color) {
+  const g = new THREE.Group();
+  const matLeg = new THREE.MeshStandardMaterial({ color, roughness: 0.5 });
+  const matTop = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  const matFlag = new THREE.MeshStandardMaterial({ color, roughness: 0.6, side: THREE.DoubleSide });
+  // legs
+  const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 5, 8), matLeg);
+  legL.position.set(-TRACK_HALF + 0.4, 2.5, 0);
+  legL.castShadow = true;
+  g.add(legL);
+  const legR = legL.clone(); legR.position.x = TRACK_HALF - 0.4; g.add(legR);
+  // banner
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(TRACK_WIDTH - 0.4, 0.8, 0.2), matTop);
+  banner.position.set(0, 5.4, 0);
+  banner.castShadow = true;
+  g.add(banner);
+  // flags
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.8), matFlag);
+  flag.position.set(0, 6.4, 0);
+  g.add(flag);
+  return g;
+}
+const cpColors = [0xff4d4d, 0xffd14d, 0x4dd17a, 0x4dabff, 0xd14dff, 0xff8a3c];
+for (let i = 0; i < NUM_CHECKPOINTS; i++) {
+  const t = i / NUM_CHECKPOINTS;
+  const s = sampleCurve(t);
+  const arch = makeArch(cpColors[i]);
+  arch.position.set(s.pos.x, TRACK_Y, s.pos.z);
+  arch.rotation.y = Math.atan2(s.tangent.x, s.tangent.z);
+  scene.add(arch);
+  checkpoints.push({ t, pos: s.pos.clone(), heading: Math.atan2(s.tangent.x, s.tangent.z), mesh: arch });
+}
+
+// ---------- Start/finish line ----------
+{
+  const s = sampleCurve(0);
+  const startGeo = new THREE.PlaneGeometry(TRACK_WIDTH, 1.2);
+  // checkered texture
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const cell = 8;
+  for (let y = 0; y < 64; y += cell) {
+    for (let x = 0; x < 64; x += cell) {
+      ctx.fillStyle = ((x/cell + y/cell) % 2 === 0) ? '#fff' : '#000';
+      ctx.fillRect(x, y, cell, cell);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const startMesh = new THREE.Mesh(startGeo, new THREE.MeshBasicMaterial({ map: tex }));
+  startMesh.rotation.x = -Math.PI / 2;
+  startMesh.position.set(s.pos.x, TRACK_Y + 0.03, s.pos.z);
+  startMesh.rotation.z = -Math.atan2(s.tangent.x, s.tangent.z) + Math.PI/2;
+  scene.add(startMesh);
+}
+
+// ---------- Project position to nearest curve sample ----------
+function projectToTrack(pos) {
+  let bestI = 0, bestD2 = Infinity;
+  for (let i = 0; i < trackSamples.length; i++) {
+    const p = trackSamples[i].pos;
+    const dx = p.x - pos.x, dz = p.z - pos.z;
+    const d2 = dx*dx + dz*dz;
+    if (d2 < bestD2) { bestD2 = d2; bestI = i; }
+  }
+  const s = trackSamples[bestI];
+  // Lateral distance from centerline (XZ only)
+  const dx = pos.x - s.pos.x, dz = pos.z - s.pos.z;
+  const dist = Math.sqrt(dx*dx + dz*dz);
+  return { t: s.t, sample: s, dist };
+}
+
+// ---------- Inputs ----------
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
+
+// Joystick
+let joyVec = { x: 0, y: 0 };
+let joyActive = false;
+const joystick = document.getElementById('joystick');
+const joyStick = joystick.querySelector('.stick');
+let joyCenter = null;
+const JOY_R = 50;
+
+function joyStart(e) {
+  e.preventDefault();
+  joyActive = true;
+  joystick.classList.add('active');
+  const r = joystick.getBoundingClientRect();
+  joyCenter = { x: r.left + r.width/2, y: r.top + r.height/2 };
+  joyMove(e);
+}
+function joyMove(e) {
+  if (!joyActive) return;
+  e.preventDefault();
+  const t = e.touches ? e.touches[0] : e;
+  let dx = t.clientX - joyCenter.x;
+  let dy = t.clientY - joyCenter.y;
+  const d = Math.hypot(dx, dy);
+  if (d > JOY_R) { dx = dx / d * JOY_R; dy = dy / d * JOY_R; }
+  joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
+  joyVec.x = dx / JOY_R;
+  joyVec.y = dy / JOY_R;
+}
+function joyEnd(e) {
+  joyActive = false;
+  joystick.classList.remove('active');
+  joyStick.style.transform = 'translate(0, 0)';
+  joyVec.x = 0; joyVec.y = 0;
+}
+joystick.addEventListener('touchstart', joyStart, { passive: false });
+joystick.addEventListener('touchmove', joyMove, { passive: false });
+joystick.addEventListener('touchend', joyEnd);
+joystick.addEventListener('touchcancel', joyEnd);
+joystick.addEventListener('mousedown', joyStart);
+window.addEventListener('mousemove', joyMove);
+window.addEventListener('mouseup', joyEnd);
+
+// Tap left/right
+let tapLeftActive = false, tapRightActive = false;
+function bindTap(el, setter) {
+  const on = e => { e.preventDefault(); el.classList.add('active'); setter(true); };
+  const off = e => { el.classList.remove('active'); setter(false); };
+  el.addEventListener('touchstart', on, { passive: false });
+  el.addEventListener('touchend', off);
+  el.addEventListener('touchcancel', off);
+  el.addEventListener('mousedown', on);
+  el.addEventListener('mouseup', off);
+  el.addEventListener('mouseleave', off);
+}
+bindTap(document.getElementById('tapLeft'),  v => tapLeftActive = v);
+bindTap(document.getElementById('tapRight'), v => tapRightActive = v);
+
+// Tilt
+let tiltSteer = 0;
+let tiltEnabled = false;
+const tiltBtn = document.getElementById('tiltBtn');
+async function toggleTilt() {
+  if (tiltEnabled) {
+    tiltEnabled = false;
+    tiltBtn.classList.remove('active');
+    tiltSteer = 0;
+    return;
+  }
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== 'granted') return;
+    } catch { return; }
+  }
+  window.addEventListener('deviceorientation', e => {
+    if (!tiltEnabled) return;
+    const g = e.gamma || 0; // left/right tilt
+    tiltSteer = Math.max(-1, Math.min(1, g / 25));
+  });
+  tiltEnabled = true;
+  tiltBtn.classList.add('active');
+}
+tiltBtn.addEventListener('click', toggleTilt);
+
+function readInputs() {
+  let steer = 0, thrust = 0;
+  if (keys['arrowleft']  || keys['a']) steer -= 1;
+  if (keys['arrowright'] || keys['d']) steer += 1;
+  if (keys['arrowup']    || keys['w']) thrust += 1;
+  if (keys['arrowdown']  || keys['s']) thrust -= 1;
+  // joystick
+  steer += joyVec.x;
+  thrust += -joyVec.y;
+  // tap buttons
+  if (tapLeftActive)  steer -= 1;
+  if (tapRightActive) steer += 1;
+  // tilt
+  steer += tiltSteer;
+  // clamp
+  steer = Math.max(-1, Math.min(1, steer));
+  thrust = Math.max(-1, Math.min(1, thrust));
+  // mobile auto-thrust when no input
+  if (isTouch && thrust === 0 && !keys['arrowdown'] && !keys['s']) {
+    thrust = 0.85;
+  }
+  return { steer, thrust };
+}
+
+// ---------- Game state ----------
+const state = {
+  mode: 'menu', // menu | countdown | racing | finished
+  startTime: 0,
+  elapsed: 0,
+  countdown: 3,
+  rankings: [],
+};
+
+function showCountdown(label) {
+  countdownEl.textContent = label;
+  countdownEl.classList.remove('hidden');
+  countdownEl.style.transform = 'scale(1.4)';
+  countdownEl.style.opacity = '0';
+  requestAnimationFrame(() => {
+    countdownEl.style.transition = 'transform .35s ease-out, opacity .35s ease-out';
+    countdownEl.style.transform = 'scale(1)';
+    countdownEl.style.opacity = '1';
+  });
+}
+function hideCountdown() {
+  countdownEl.classList.add('hidden');
+  countdownEl.style.transition = '';
+}
+
+async function startRace() {
+  overlay.classList.add('hidden');
+  document.body.classList.add('racing');
+  hudLeft.classList.remove('hidden');
+  hudRight.classList.remove('hidden');
+  totalLapsEl.textContent = NUM_LAPS;
+  // reset racers
+  for (const r of racers) r.resetToStart();
+  state.mode = 'countdown';
+  for (const n of ['3', '2', '1', 'GO!']) {
+    showCountdown(n);
+    await sleep(n === 'GO!' ? 600 : 800);
+  }
+  hideCountdown();
+  state.mode = 'racing';
+  state.startTime = performance.now();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+startBtn.addEventListener('click', () => { startBtn.blur(); startRace(); });
+// Also accept Enter/Space from the start screen
+window.addEventListener('keydown', e => {
+  if (state.mode === 'menu' && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    startBtn.click();
+  }
 });
 
+// ---------- Update loop ----------
+let lastTime = performance.now();
+
+function update(dt) {
+  if (state.mode === 'racing' || state.mode === 'countdown') {
+    updatePlayer(dt);
+    updateNPCs(dt);
+    updateRanking();
+  }
+  updateCamera(dt);
+  animateRacers(dt);
+  updateSnow(dt);
+
+  if (state.mode === 'racing') {
+    state.elapsed = (performance.now() - state.startTime) / 1000;
+    timeEl.textContent = state.elapsed.toFixed(1);
+    speedEl.textContent = Math.max(0, Math.round(player.velocity * 3));
+
+    if (player.finished) endRace();
+  }
+}
+
+function updatePlayer(dt) {
+  const moving = state.mode === 'racing';
+  const inp = moving ? readInputs() : { steer: 0, thrust: 0 };
+
+  // Project to track first to determine surface
+  const proj = projectToTrack(player.position);
+  const onTrack = proj.dist <= TRACK_HALF + 0.4;
+
+  // Steering scales mildly with speed
+  const speedNorm = Math.min(1, Math.abs(player.velocity) / MAX_SPEED);
+  const steerScale = 0.55 + 0.45 * speedNorm;
+  const dirSign = player.velocity < 0 ? -1 : 1;
+  player.heading += inp.steer * STEER_RATE * steerScale * dirSign * dt;
+
+  // Thrust + drag
+  player.velocity += inp.thrust * ACCEL * dt;
+  const drag = onTrack ? ONTRACK_DRAG : OFFTRACK_DRAG;
+  player.velocity *= Math.pow(drag, dt * 60);
+  const maxV = onTrack ? MAX_SPEED : MAX_SPEED * 0.55;
+  player.velocity = Math.max(-REVERSE_SPEED, Math.min(maxV, player.velocity));
+
+  // Move horizontally
+  player.position.x += Math.sin(player.heading) * player.velocity * dt;
+  player.position.z += Math.cos(player.heading) * player.velocity * dt;
+
+  // Vertical: if on track, clamp to TRACK_Y. Else gravity.
+  const newProj = projectToTrack(player.position);
+  const stillOnTrack = newProj.dist <= TRACK_HALF + 0.4;
+  if (stillOnTrack && player.position.y < TRACK_Y + 0.5 && player.position.y > TRACK_Y - 2) {
+    player.position.y = TRACK_Y;
+    player.velocityY = 0;
+  } else {
+    player.velocityY -= GRAVITY * dt;
+    player.position.y += player.velocityY * dt;
+    // Tilt penguin forward while falling
+    player.mesh.userData.body.rotation.x = Math.max(-0.8, player.velocityY * 0.04);
+  }
+
+  // Fall check
+  if (player.position.y < FALL_Y) {
+    respawnPlayer();
+    return;
+  }
+
+  // Checkpoint detection
+  const cp = checkpoints[player.nextCp];
+  if (cp) {
+    const dx = cp.pos.x - player.position.x;
+    const dz = cp.pos.z - player.position.z;
+    if (Math.hypot(dx, dz) < TRACK_HALF + 1.5 &&
+        Math.abs(player.position.y - TRACK_Y) < 2.5) {
+      onPlayerCheckpoint();
+    }
+  }
+
+  // Update player.t for ranking (project, smooth lap counting)
+  const prevT = player.t;
+  player.t = newProj.t;
+  cpEl.textContent = (player.nextCp);
+
+  // Apply mesh
+  player.mesh.position.copy(player.position);
+  player.mesh.rotation.y = player.heading;
+}
+
+function onPlayerCheckpoint() {
+  const cp = checkpoints[player.nextCp];
+  // Save safe respawn at this checkpoint (slightly forward to face right way)
+  player.lastSafe.copy(cp.pos);
+  player.lastSafe.y = TRACK_Y;
+  player.lastSafeHeading = cp.heading;
+  player.nextCp++;
+  if (player.nextCp >= NUM_CHECKPOINTS) {
+    player.nextCp = 0;
+    player.lap++;
+    cpEl.textContent = '0';
+    if (player.lap >= NUM_LAPS) {
+      player.finished = true;
+      player.finishTime = performance.now();
+    }
+  }
+}
+
+function respawnPlayer() {
+  player.position.copy(player.lastSafe);
+  player.position.y = TRACK_Y + 0.5;
+  player.velocity = 0;
+  player.velocityY = 0;
+  player.heading = player.lastSafeHeading;
+  player.mesh.userData.body.rotation.x = 0;
+  // flash + toast
+  respawnFlash.classList.add('show');
+  fallToast.classList.add('show');
+  setTimeout(() => respawnFlash.classList.remove('show'), 220);
+  setTimeout(() => fallToast.classList.remove('show'), 1100);
+}
+
+function updateNPCs(dt) {
+  if (state.mode !== 'racing') return;
+  for (const r of racers) {
+    if (r.config.isPlayer) continue;
+    if (r.finished) continue;
+    // Vary speed slightly by sine wave for character
+    const tSecs = (performance.now() - state.startTime) / 1000;
+    const wobble = Math.sin(tSecs * 0.6 + r.idx * 2.1) * 0.8;
+    const speed = r.npcBaseSpeed + wobble;
+    const prevT = r.t;
+    r.t += (speed * dt) / CURVE_LEN;
+    if (r.t >= 1) {
+      r.t -= 1;
+      r.lap++;
+      if (r.lap >= NUM_LAPS) {
+        r.finished = true;
+        r.finishTime = performance.now();
+      }
+    }
+    // Track all checkpoints as "passed" implicitly
+    const s = sampleCurve(r.t);
+    r.position.copy(s.pos).addScaledVector(s.normal, r.laneOffset);
+    r.position.y = TRACK_Y;
+    r.heading = Math.atan2(s.tangent.x, s.tangent.z);
+    r.mesh.position.copy(r.position);
+    r.mesh.rotation.y = r.heading;
+  }
+}
+
+function updateRanking() {
+  // Use progress; player uses lap + projected t; NPCs use lap + t
+  const ordered = [...racers].sort((a, b) => b.progress() - a.progress());
+  state.rankings = ordered;
+  const playerRank = ordered.indexOf(player) + 1;
+  posEl.textContent = playerRank + ['st','nd','rd','th'][Math.min(3, playerRank-1)];
+  lapEl.textContent = Math.min(player.lap + 1, NUM_LAPS);
+}
+
+function animateRacers(dt) {
+  const t = performance.now() / 1000;
+  for (const r of racers) {
+    const speed = r.config.isPlayer ? Math.abs(r.velocity) : (r.npcBaseSpeed || 0);
+    const flap = Math.sin(t * 12) * Math.min(speed / MAX_SPEED, 1) * 0.45;
+    r.mesh.userData.wingL.rotation.z = flap;
+    r.mesh.userData.wingR.rotation.z = -flap;
+    if (r.config.isPlayer) continue;
+    // small idle lean
+    r.mesh.userData.body.rotation.x = -Math.min(0.18, (r.npcBaseSpeed || 0) * 0.01);
+  }
+}
+
+const camTarget = new THREE.Vector3();
+const camDesired = new THREE.Vector3();
+function updateCamera(dt) {
+  const back = 12, up = 6.5;
+  camDesired.set(
+    player.position.x - Math.sin(player.heading) * back,
+    player.position.y + up,
+    player.position.z - Math.cos(player.heading) * back
+  );
+  if (state.mode === 'menu') {
+    // Slow orbit
+    const t = performance.now() * 0.0002;
+    camDesired.set(Math.cos(t) * 70, 38, Math.sin(t) * 70);
+  }
+  camera.position.lerp(camDesired, Math.min(1, dt * (state.mode === 'menu' ? 1.5 : 4.5)));
+  camTarget.lerp(new THREE.Vector3(player.position.x, player.position.y + 1.5, player.position.z),
+                 Math.min(1, dt * 6));
+  if (state.mode === 'menu') camTarget.set(0, 0, 0);
+  camera.lookAt(camTarget);
+}
+
+function updateSnow(dt) {
+  const pos = snow.geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    let y = pos.array[i*3+1];
+    y -= dt * 2.5;
+    if (y < 0) y = 60;
+    pos.array[i*3+1] = y;
+    // gentle drift
+    pos.array[i*3+0] += Math.sin(performance.now()*0.001 + i) * dt * 0.15;
+  }
+  pos.needsUpdate = true;
+  // Keep snow centered around player
+  snow.position.set(player.position.x, 0, player.position.z);
+}
+
+// ---------- End-of-race ----------
+function endRace() {
+  state.mode = 'finished';
+  document.body.classList.remove('racing');
+  hudLeft.classList.add('hidden');
+  hudRight.classList.add('hidden');
+  // Final ranking
+  const ordered = [...racers].sort((a, b) => b.progress() - a.progress());
+  const coins = [100, 60, 30, 10];
+  const youRank = ordered.indexOf(player) + 1;
+
+  overlay.classList.remove('hidden');
+  overlayPanel.innerHTML = `
+    <div class="built-by">🎮 Game built by<br><b>Sreevarshan · Sreejan · Magizhini</b></div>
+    <h2>${youRank === 1 ? '🏆 You won!' : '🏁 Race Complete!'}</h2>
+    <p>Great skating, Sreejan!</p>
+    <p style="font-size:18px"><b>You finished ${ordinal(youRank)}</b> — earned <b style="color:#ffcd3c">${coins[youRank-1]} coins</b></p>
+    <div id="standings"></div>
+    <button id="againBtn" class="cta">Race Again!</button>
+  `;
+  const sEl = document.getElementById('standings');
+  ordered.forEach((r, i) => {
+    const isYou = r.config.isPlayer;
+    const row = document.createElement('div');
+    row.className = 'standing-row' + (isYou ? ' you' : '');
+    const photoHtml = r.config.photo
+      ? `<img src="${r.config.photo}" alt="${r.config.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #${r.config.color.toString(16).padStart(6,'0')}"/>`
+      : `<span class="swatch" style="background:#${r.config.color.toString(16).padStart(6,'0')}"></span>`;
+    row.innerHTML = `
+      <div class="standing-rank">${['🥇','🥈','🥉','4️⃣'][i]}</div>
+      <div class="standing-name">${photoHtml}${r.config.name}${isYou ? ' (You)' : ''}</div>
+      <div class="standing-coins">+${coins[i]} 🪙</div>
+    `;
+    sEl.appendChild(row);
+  });
+  document.getElementById('againBtn').addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    overlay.classList.add('hidden');
+    overlayPanel.innerHTML = '';
+    startRace();
+  });
+}
+
+function ordinal(n) {
+  return n + (['st','nd','rd','th'][Math.min(3, n-1)]);
+}
+
+// ---------- Resize ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Snow particles
-const SNOW = 500;
-const snowGeo = new THREE.BufferGeometry();
-const snowPos = new Float32Array(SNOW * 3);
-for (let i = 0; i < SNOW; i++) {
-  snowPos[i*3+0] = (Math.random() - 0.5) * 60;
-  snowPos[i*3+1] = Math.random() * 30;
-  snowPos[i*3+2] = (Math.random() - 0.5) * 60;
-}
-snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
-const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.18, transparent: true, opacity: 0.85 }));
-scene.add(snow);
+// ---------- Initial setup ----------
+for (const r of racers) r.resetToStart();
 
-let last = performance.now();
-function tick() {
-  requestAnimationFrame(tick);
+function loop() {
+  requestAnimationFrame(loop);
   const now = performance.now();
-  const dt = (now - last) / 1000; last = now;
-
-  // Slow camera orbit
-  const t = now * 0.0002;
-  camera.position.x = Math.cos(t) * 14;
-  camera.position.z = Math.sin(t) * 14;
-  camera.position.y = 4 + Math.sin(t * 2) * 0.4;
-  camera.lookAt(0, 1.5, 0);
-
-  // Penguin idle bob
-  penguins.forEach((p, i) => {
-    p.position.y = Math.sin(now * 0.002 + i) * 0.08;
-  });
-
-  // Snow drift
-  const a = snowGeo.attributes.position;
-  for (let i = 0; i < SNOW; i++) {
-    a.array[i*3+1] -= dt * 1.5;
-    if (a.array[i*3+1] < 0) a.array[i*3+1] = 30;
-  }
-  a.needsUpdate = true;
-
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  update(dt);
   renderer.render(scene, camera);
 }
-tick();
+loop();
 </script>
 </body>
 </html>
